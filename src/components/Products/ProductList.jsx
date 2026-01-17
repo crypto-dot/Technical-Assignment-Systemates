@@ -55,6 +55,7 @@ function ProductList() {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [expandedGroups, setExpandedGroups] = useState({});
+  const [expandedSubGroups, setExpandedSubGroups] = useState({});
 
   // Filter products based on search
   const filteredProducts = useMemo(() => {
@@ -77,6 +78,90 @@ function ProductList() {
     }
     return NaN; 
   }
+  // Helper to parse size into numeric value and unit
+  const parseSizeInfo = (productSize) => {
+    if (!productSize) return { numericValue: null, unit: 'Not Specified', formattedValue: 'Not Specified' };
+    
+    const regex = /[a-zA-Z]+/;
+    const match = productSize.match(regex);
+    const unit = match?.length ? match[0].toUpperCase() : "UNITS";
+    
+    let numericValue;
+    let formattedValue;
+    
+    if (productSize.includes('/')) {
+      numericValue = parseFraction(productSize);
+      formattedValue = Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(numericValue);
+    } else if (productSize.includes('-')) {
+      numericValue = parseFloat(productSize.split('-')[0]) + parseFloat(productSize.split('-')[1]) / 12;
+      formattedValue = Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(numericValue);
+    } else {
+      numericValue = parseFloat(productSize);
+      formattedValue = !isNaN(numericValue) 
+        ? Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(numericValue) 
+        : 'Not Specified';
+    }
+    
+    if (isNaN(numericValue)) {
+      return { numericValue: null, unit: 'Not Specified', formattedValue: 'Not Specified' };
+    }
+    
+    return { numericValue, unit, formattedValue };
+  };
+
+  // Hierarchical grouping for productSize
+  const hierarchicalSizeGroups = useMemo(() => {
+    if (groupBy !== 'productSize') return null;
+
+    const unitGroups = {};
+    
+    filteredProducts.forEach(product => {
+      const { unit, formattedValue, numericValue } = parseSizeInfo(product.productSize);
+      
+      if (!unitGroups[unit]) {
+        unitGroups[unit] = {};
+      }
+      
+      const sizeKey = formattedValue;
+      if (!unitGroups[unit][sizeKey]) {
+        unitGroups[unit][sizeKey] = { products: [], numericValue };
+      }
+      unitGroups[unit][sizeKey].products.push(product);
+    });
+
+    // Sort units alphabetically, but put "Not Specified" at the end
+    const sortedUnits = Object.keys(unitGroups).sort((a, b) => {
+      if (a === 'Not Specified') return 1;
+      if (b === 'Not Specified') return -1;
+      return a.localeCompare(b);
+    });
+
+    const sortedResult = {};
+    sortedUnits.forEach(unit => {
+      // Sort size values numerically within each unit
+      const sizeKeys = Object.keys(unitGroups[unit]).sort((a, b) => {
+        const numA = unitGroups[unit][a].numericValue;
+        const numB = unitGroups[unit][b].numericValue;
+        if (numA === null) return 1;
+        if (numB === null) return -1;
+        return numA - numB;
+      });
+      
+      sortedResult[unit] = {};
+      sizeKeys.forEach(sizeKey => {
+        sortedResult[unit][sizeKey] = unitGroups[unit][sizeKey].products;
+      });
+    });
+
+    return sortedResult;
+  }, [filteredProducts, groupBy]);
+
+  // Count total products in a unit group
+  const getUnitGroupCount = (unit) => {
+    if (!hierarchicalSizeGroups || !hierarchicalSizeGroups[unit]) return 0;
+    return Object.values(hierarchicalSizeGroups[unit]).reduce((sum, products) => sum + products.length, 0);
+  };
+
   const groupedProducts = useMemo(() => {
     const getPriceRange = (priceStr) => {
       const numericPrice = parseFloat(priceStr?.replace(/[^0-9.-]/g, ''));
@@ -94,27 +179,17 @@ function ProductList() {
       return { 'All Products': filteredProducts };
     }
 
+    // For productSize, return empty object as we use hierarchicalSizeGroups
+    if (groupBy === 'productSize') {
+      return {};
+    }
+
     const groups = {};
     filteredProducts.forEach(product => {
       let key = product[groupBy] || 'Not Specified';
 
       if (groupBy === 'price') {
         key = getPriceRange(product.price);
-      }
-      if (groupBy === 'productSize') {
-        const regex = /[a-zA-Z]+/;
-        const match = product.productSize.match(regex);
-        const units = match?.length ? match[0].toUpperCase() : "Units";
-        if (product.productSize.includes('/')) {
-          key = Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(parseFraction(product.productSize)) || "Not Specified";
-        } else if (product.productSize.includes('-')) {
-          key = Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(parseFloat(product.productSize.split('-')[0]) + parseFloat(product.productSize.split('-')[1])/12) || "Not Specified";
-        } else {
-          key = Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(parseFloat(product.productSize)) !== "NaN" ? Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(parseFloat(product.productSize)) : "Not Specified";
-        }
-        if(key !== "Not Specified") {
-          key += ` ${units}`;
-        }
       }
       if(groupBy === 'catId' && key !== "Not Specified") {
         const CATEGORY_NAME = "Category: " + key;
@@ -173,11 +248,24 @@ function ProductList() {
   // Initialize all groups as expanded
   React.useEffect(() => {
     const initialExpanded = {};
-    Object.keys(groupedProducts).forEach(key => {
-      initialExpanded[key] = true;
-    });
+    const initialSubExpanded = {};
+    
+    if (groupBy === 'productSize' && hierarchicalSizeGroups) {
+      Object.keys(hierarchicalSizeGroups).forEach(unit => {
+        initialExpanded[unit] = true;
+        Object.keys(hierarchicalSizeGroups[unit]).forEach(size => {
+          initialSubExpanded[`${unit}-${size}`] = true;
+        });
+      });
+    } else {
+      Object.keys(groupedProducts).forEach(key => {
+        initialExpanded[key] = true;
+      });
+    }
+    
     setExpandedGroups(initialExpanded);
-  }, [groupBy,groupedProducts]);
+    setExpandedSubGroups(initialSubExpanded);
+  }, [groupBy, groupedProducts, hierarchicalSizeGroups]);
 
   const handleChangePage = (event, newPage) => {
     setPage(newPage);
@@ -206,16 +294,49 @@ function ProductList() {
     }));
   };
 
+  const toggleSubGroup = (subGroupKey) => {
+    setExpandedSubGroups(prev => ({
+      ...prev,
+      [subGroupKey]: !prev[subGroupKey]
+    }));
+  };
+
   const allGroupsExpanded = useMemo(() => {
+    if (groupBy === 'productSize' && hierarchicalSizeGroups) {
+      const unitKeys = Object.keys(hierarchicalSizeGroups);
+      if (unitKeys.length === 0) return false;
+      
+      const allUnitsExpanded = unitKeys.every(key => expandedGroups[key]);
+      const allSizesExpanded = unitKeys.every(unit => 
+        Object.keys(hierarchicalSizeGroups[unit]).every(size => 
+          expandedSubGroups[`${unit}-${size}`]
+        )
+      );
+      return allUnitsExpanded && allSizesExpanded;
+    }
+    
     const groupKeys = Object.keys(groupedProducts);
     return groupKeys.length > 0 && groupKeys.every(key => expandedGroups[key]);
-  }, [groupedProducts, expandedGroups]);
+  }, [groupedProducts, expandedGroups, groupBy, hierarchicalSizeGroups, expandedSubGroups]);
 
   const toggleAllGroups = () => {
     const newExpanded = {};
-    Object.keys(groupedProducts).forEach(key => {
-      newExpanded[key] = !allGroupsExpanded;
-    });
+    const newSubExpanded = {};
+    
+    if (groupBy === 'productSize' && hierarchicalSizeGroups) {
+      Object.keys(hierarchicalSizeGroups).forEach(unit => {
+        newExpanded[unit] = !allGroupsExpanded;
+        Object.keys(hierarchicalSizeGroups[unit]).forEach(size => {
+          newSubExpanded[`${unit}-${size}`] = !allGroupsExpanded;
+        });
+      });
+      setExpandedSubGroups(newSubExpanded);
+    } else {
+      Object.keys(groupedProducts).forEach(key => {
+        newExpanded[key] = !allGroupsExpanded;
+      });
+    }
+    
     setExpandedGroups(newExpanded);
   };
 
@@ -345,7 +466,292 @@ function ProductList() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {Object.entries(groupedProducts).map(([groupName, groupProducts]) => (
+              {/* Hierarchical rendering for productSize grouping */}
+              {groupBy === 'productSize' && hierarchicalSizeGroups && Object.entries(hierarchicalSizeGroups).map(([unit, sizeGroups]) => (
+                <React.Fragment key={unit}>
+                  {/* Unit group header (outer group) */}
+                  <TableRow
+                    sx={{
+                      backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.12),
+                      cursor: 'pointer',
+                      '&:hover': {
+                        backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.16),
+                      },
+                      '& .MuiTableCell-root': {
+                        px: { xs: 0.5, sm: 1, md: 2 },
+                        py: { xs: 0.75, sm: 1.25 },
+                      }
+                    }}
+                    onClick={() => toggleGroup(unit)}
+                  >
+                    <TableCell>
+                      <IconButton size="small">
+                        {expandedGroups[unit] ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                      </IconButton>
+                    </TableCell>
+                    <TableCell colSpan={7}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Typography variant="subtitle1" fontWeight={700}>
+                          {unit}
+                        </Typography>
+                        <Chip 
+                          label={`${getUnitGroupCount(unit)} items`} 
+                          size="small" 
+                          color="primary" 
+                          variant="filled"
+                        />
+                        {unit !== 'Not Specified' && (
+                          <Chip 
+                            label={`${Object.keys(sizeGroups).length} sizes`} 
+                            size="small" 
+                            color="secondary" 
+                            variant="outlined"
+                          />
+                        )}
+                      </Box>
+                    </TableCell>
+                  </TableRow>
+
+                  {/* For "Not Specified" - show products directly without inner subgroups */}
+                  {expandedGroups[unit] && unit === 'Not Specified' && Object.values(sizeGroups).flat().map((product) => (
+                    <TableRow
+                      key={`${product.item}-${product.productId}`}
+                      hover
+                      sx={{
+                        '&:nth-of-type(odd)': {
+                          backgroundColor: (theme) => alpha(theme.palette.action.hover, 0.25),
+                        },
+                        '&:hover': {
+                          backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.06),
+                        },
+                        '& .MuiTableCell-root': {
+                          borderColor: 'divider',
+                          px: { xs: 0.5, sm: 1, md: 2 },
+                          py: { xs: 0.5, sm: 1 },
+                        }
+                      }}
+                    >
+                      <TableCell></TableCell>
+                      <TableCell sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <Typography variant="body2" noWrap title={product.item}>
+                          {product.item}
+                        </Typography>
+                      </TableCell>
+                      <TableCell align="center">
+                        <Chip
+                          label={product.price.trim()}
+                          color="success"
+                          size="small"
+                          variant="outlined"
+                          sx={{ 
+                            height: 'auto', 
+                            '& .MuiChip-label': { 
+                              px: { xs: 0.5, sm: 1 },
+                              py: 0.25,
+                              fontSize: { xs: '0.7rem', sm: '0.8125rem' }
+                            } 
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell align="center">
+                        <Chip 
+                          label={product.uom} 
+                          size="small"
+                          sx={{ 
+                            height: 'auto', 
+                            '& .MuiChip-label': { 
+                              px: { xs: 0.5, sm: 1 },
+                              py: 0.25,
+                              fontSize: { xs: '0.7rem', sm: '0.8125rem' }
+                            } 
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell align="center">
+                        {product.productSize || '-'}
+                      </TableCell>
+                      <TableCell align="center">
+                        {product.plu_upc || '-'}
+                      </TableCell>
+                      <TableCell align="center">
+                        {product.catId}
+                      </TableCell>
+                      <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 0.75 }}>
+                          <IconButton
+                            size="small"
+                            color="primary"
+                            onClick={() => handleEdit(product)}
+                            sx={{
+                              border: 1,
+                              borderColor: 'divider',
+                              borderRadius: 2,
+                            }}
+                          >
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={() => setDeleteConfirm(product)}
+                            sx={{
+                              border: 1,
+                              borderColor: 'divider',
+                              borderRadius: 2,
+                            }}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </Box>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+
+                  {/* Size subgroups (inner groups) - only for non "Not Specified" units */}
+                  {expandedGroups[unit] && unit !== 'Not Specified' && Object.entries(sizeGroups).map(([sizeValue, products]) => {
+                    const subGroupKey = `${unit}-${sizeValue}`;
+                    return (
+                      <React.Fragment key={subGroupKey}>
+                        {/* Size subgroup header */}
+                        <TableRow
+                          sx={{
+                            backgroundColor: (theme) => alpha(theme.palette.secondary.main, 0.06),
+                            cursor: 'pointer',
+                            '&:hover': {
+                              backgroundColor: (theme) => alpha(theme.palette.secondary.main, 0.1),
+                            },
+                            '& .MuiTableCell-root': {
+                              px: { xs: 0.5, sm: 1, md: 2 },
+                              py: { xs: 0.5, sm: 0.75 },
+                            }
+                          }}
+                          onClick={() => toggleSubGroup(subGroupKey)}
+                        >
+                          <TableCell>
+                            <Box sx={{ display: 'flex', alignItems: 'center', pl: 2 }}>
+                              <IconButton size="small">
+                                {expandedSubGroups[subGroupKey] ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
+                              </IconButton>
+                            </Box>
+                          </TableCell>
+                          <TableCell colSpan={7}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, pl: 2 }}>
+                              <Typography variant="body1" fontWeight={600}>
+                                {sizeValue} {unit}
+                              </Typography>
+                              <Chip 
+                                label={`${products.length} items`} 
+                                size="small" 
+                                variant="outlined"
+                              />
+                            </Box>
+                          </TableCell>
+                        </TableRow>
+
+                        {/* Products in this size subgroup */}
+                        {expandedSubGroups[subGroupKey] && products.map((product) => (
+                          <TableRow
+                            key={`${product.item}-${product.productId}`}
+                            hover
+                            sx={{
+                              '&:nth-of-type(odd)': {
+                                backgroundColor: (theme) => alpha(theme.palette.action.hover, 0.25),
+                              },
+                              '&:hover': {
+                                backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.06),
+                              },
+                              '& .MuiTableCell-root': {
+                                borderColor: 'divider',
+                                px: { xs: 0.5, sm: 1, md: 2 },
+                                py: { xs: 0.5, sm: 1 },
+                              }
+                            }}
+                          >
+                            <TableCell></TableCell>
+                            <TableCell sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              <Box sx={{ pl: 4 }}>
+                                <Typography variant="body2" noWrap title={product.item}>
+                                  {product.item}
+                                </Typography>
+                              </Box>
+                            </TableCell>
+                            <TableCell align="center">
+                              <Chip
+                                label={product.price.trim()}
+                                color="success"
+                                size="small"
+                                variant="outlined"
+                                sx={{ 
+                                  height: 'auto', 
+                                  '& .MuiChip-label': { 
+                                    px: { xs: 0.5, sm: 1 },
+                                    py: 0.25,
+                                    fontSize: { xs: '0.7rem', sm: '0.8125rem' }
+                                  } 
+                                }}
+                              />
+                            </TableCell>
+                            <TableCell align="center">
+                              <Chip 
+                                label={product.uom} 
+                                size="small"
+                                sx={{ 
+                                  height: 'auto', 
+                                  '& .MuiChip-label': { 
+                                    px: { xs: 0.5, sm: 1 },
+                                    py: 0.25,
+                                    fontSize: { xs: '0.7rem', sm: '0.8125rem' }
+                                  } 
+                                }}
+                              />
+                            </TableCell>
+                            <TableCell align="center">
+                              {product.productSize || '-'}
+                            </TableCell>
+                            <TableCell align="center">
+                              {product.plu_upc || '-'}
+                            </TableCell>
+                            <TableCell align="center">
+                              {product.catId}
+                            </TableCell>
+                            <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
+                              <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 0.75 }}>
+                                <IconButton
+                                  size="small"
+                                  color="primary"
+                                  onClick={() => handleEdit(product)}
+                                  sx={{
+                                    border: 1,
+                                    borderColor: 'divider',
+                                    borderRadius: 2,
+                                  }}
+                                >
+                                  <EditIcon fontSize="small" />
+                                </IconButton>
+                                <IconButton
+                                  size="small"
+                                  color="error"
+                                  onClick={() => setDeleteConfirm(product)}
+                                  sx={{
+                                    border: 1,
+                                    borderColor: 'divider',
+                                    borderRadius: 2,
+                                  }}
+                                >
+                                  <DeleteIcon fontSize="small" />
+                                </IconButton>
+                              </Box>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </React.Fragment>
+                    );
+                  })}
+                </React.Fragment>
+              ))}
+
+              {/* Standard rendering for non-productSize grouping */}
+              {groupBy !== 'productSize' && Object.entries(groupedProducts).map(([groupName, groupProducts]) => (
                 <React.Fragment key={groupName}>
                   {groupBy !== 'none' && (
                     <TableRow
