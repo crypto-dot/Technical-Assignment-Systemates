@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react'
 
 // https://vite.dev/config/
 export default defineConfig({
-  base: '/coding_assignment/',
+  base: '/Technical-Assignment-Systemates/',
   plugins: [
     react({
       babel: {
