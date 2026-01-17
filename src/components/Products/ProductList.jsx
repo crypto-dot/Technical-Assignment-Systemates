@@ -504,7 +504,7 @@ function ProductList() {
                           <Chip 
                             label={`${Object.keys(sizeGroups).length} sizes`} 
                             size="small" 
-                            color="secondary" 
+                            backgroundColor="primary"
                             variant="outlined"
                           />
                         )}
@@ -615,11 +615,7 @@ function ProductList() {
                         {/* Size subgroup header */}
                         <TableRow
                           sx={{
-                            backgroundColor: (theme) => alpha(theme.palette.secondary.main, 0.06),
                             cursor: 'pointer',
-                            '&:hover': {
-                              backgroundColor: (theme) => alpha(theme.palette.secondary.main, 0.1),
-                            },
                             '& .MuiTableCell-root': {
                               px: { xs: 0.5, sm: 1, md: 2 },
                               py: { xs: 0.5, sm: 0.75 },
