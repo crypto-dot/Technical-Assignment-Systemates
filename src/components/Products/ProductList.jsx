@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useSelector} from 'react-redux';
 import {
   Box,
@@ -9,28 +9,26 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  IconButton,
   Typography,
   Toolbar,
   Button,
   TextField,
   MenuItem,
-  Chip,
   TablePagination,
   InputAdornment,
-  alpha
+  Fab,
+  Zoom
 } from '@mui/material';
 import {
   Add as AddIcon,
-  Edit as EditIcon,
-  Delete as DeleteIcon,
   Search as SearchIcon,
-  ExpandMore as ExpandMoreIcon,
-  ExpandLess as ExpandLessIcon,
   UnfoldLess as UnfoldLessIcon,
-  UnfoldMore as UnfoldMoreIcon
+  UnfoldMore as UnfoldMoreIcon,
+  KeyboardArrowUp as KeyboardArrowUpIcon
 } from '@mui/icons-material';
 import ProductForm from './ProductForm';
+import ProductRow from './ProductRow';
+import ProductGroup from './ProductGroup';
 import {DeleteDialog} from "../DeleteDialog/DeleteDialog";
 
 const PRICE_RANGE_ORDER = [
@@ -56,6 +54,27 @@ function ProductList() {
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [expandedGroups, setExpandedGroups] = useState({});
   const [expandedSubGroups, setExpandedSubGroups] = useState({});
+  const [showScrollTop, setShowScrollTop] = useState(false);
+
+  // Handle scroll to show/hide scroll-to-top button
+  useEffect(() => {
+    const handleScroll = () => {
+      setShowScrollTop(window.scrollY > 300);
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    // Check initial scroll position
+    handleScroll();
+    
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  const scrollToTop = () => {
+    window.scrollTo({
+      top: 0,
+      behavior: 'smooth'
+    });
+  };
 
   // Filter products based on search
   const filteredProducts = useMemo(() => {
@@ -468,422 +487,97 @@ function ProductList() {
             <TableBody>
               {/* Hierarchical rendering for productSize grouping */}
               {groupBy === 'productSize' && hierarchicalSizeGroups && Object.entries(hierarchicalSizeGroups).map(([unit, sizeGroups]) => (
-                <React.Fragment key={unit}>
-                  {/* Unit group header (outer group) */}
-                  <TableRow
-                    sx={{
-                      backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.12),
-                      cursor: 'pointer',
-                      '&:hover': {
-                        backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.16),
-                      },
-                      '& .MuiTableCell-root': {
-                        px: { xs: 0.5, sm: 1, md: 2 },
-                        py: { xs: 0.75, sm: 1.25 },
-                      }
-                    }}
-                    onClick={() => toggleGroup(unit)}
-                  >
-                    <TableCell>
-                      <IconButton size="small">
-                        {expandedGroups[unit] ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                      </IconButton>
-                    </TableCell>
-                    <TableCell colSpan={7}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Typography variant="subtitle1" fontWeight={700}>
-                          {unit}
-                        </Typography>
-                        <Chip 
-                          label={`${getUnitGroupCount(unit)} items`} 
-                          size="small" 
-                          color="primary" 
-                          variant="filled"
-                        />
-                        {unit !== 'Not Specified' && (
-                          <Chip 
-                            label={`${Object.keys(sizeGroups).length} sizes`} 
-                            size="small" 
-                            variant="outlined"
-                          />
-                        )}
-                      </Box>
-                    </TableCell>
-                  </TableRow>
-
+                <ProductGroup
+                  key={unit}
+                  label={unit}
+                  itemCount={getUnitGroupCount(unit)}
+                  isExpanded={expandedGroups[unit]}
+                  onToggle={() => toggleGroup(unit)}
+                  variant="primary"
+                  secondaryLabel={unit !== 'Not Specified' ? `${Object.keys(sizeGroups).length} sizes` : undefined}
+                >
                   {/* For "Not Specified" - show products directly without inner subgroups */}
-                  {expandedGroups[unit] && unit === 'Not Specified' && Object.values(sizeGroups).flat().map((product) => (
-                    <TableRow
+                  {unit === 'Not Specified' && Object.values(sizeGroups).flat().map((product) => (
+                    <ProductRow
                       key={`${product.item}-${product.productId}`}
-                      hover
-                      sx={{
-                        '&:nth-of-type(odd)': {
-                          backgroundColor: (theme) => alpha(theme.palette.action.hover, 0.25),
-                        },
-                        '&:hover': {
-                          backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.06),
-                        },
-                        '& .MuiTableCell-root': {
-                          borderColor: 'divider',
-                          px: { xs: 0.5, sm: 1, md: 2 },
-                          py: { xs: 0.5, sm: 1 },
-                        }
-                      }}
-                    >
-                      <TableCell></TableCell>
-                      <TableCell sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        <Typography variant="body2" noWrap title={product.item}>
-                          {product.item}
-                        </Typography>
-                      </TableCell>
-                      <TableCell align="center">
-                        <Chip
-                          label={product.price.trim()}
-                          color="success"
-                          size="small"
-                          variant="outlined"
-                          sx={{ 
-                            height: 'auto', 
-                            '& .MuiChip-label': { 
-                              px: { xs: 0.5, sm: 1 },
-                              py: 0.25,
-                              fontSize: { xs: '0.7rem', sm: '0.8125rem' }
-                            } 
-                          }}
-                        />
-                      </TableCell>
-                      <TableCell align="center">
-                        <Chip 
-                          label={product.uom} 
-                          size="small"
-                          sx={{ 
-                            height: 'auto', 
-                            '& .MuiChip-label': { 
-                              px: { xs: 0.5, sm: 1 },
-                              py: 0.25,
-                              fontSize: { xs: '0.7rem', sm: '0.8125rem' }
-                            } 
-                          }}
-                        />
-                      </TableCell>
-                      <TableCell align="center">
-                        {product.productSize || '-'}
-                      </TableCell>
-                      <TableCell align="center">
-                        {product.plu_upc || '-'}
-                      </TableCell>
-                      <TableCell align="center">
-                        {product.catId}
-                      </TableCell>
-                      <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
-                        <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 0.75 }}>
-                          <IconButton
-                            size="small"
-                            color="primary"
-                            onClick={() => handleEdit(product)}
-                            sx={{
-                              border: 1,
-                              borderColor: 'divider',
-                              borderRadius: 2,
-                            }}
-                          >
-                            <EditIcon fontSize="small" />
-                          </IconButton>
-                          <IconButton
-                            size="small"
-                            color="error"
-                            onClick={() => setDeleteConfirm(product)}
-                            sx={{
-                              border: 1,
-                              borderColor: 'divider',
-                              borderRadius: 2,
-                            }}
-                          >
-                            <DeleteIcon fontSize="small" />
-                          </IconButton>
-                        </Box>
-                      </TableCell>
-                    </TableRow>
+                      product={product}
+                      onEdit={handleEdit}
+                      onDelete={setDeleteConfirm}
+                      showGroupColumn={true}
+                    />
                   ))}
 
                   {/* Size subgroups (inner groups) - only for non "Not Specified" units */}
-                  {expandedGroups[unit] && unit !== 'Not Specified' && Object.entries(sizeGroups).map(([sizeValue, products]) => {
+                  {unit !== 'Not Specified' && Object.entries(sizeGroups).map(([sizeValue, products]) => {
                     const subGroupKey = `${unit}-${sizeValue}`;
                     return (
-                      <React.Fragment key={subGroupKey}>
-                        {/* Size subgroup header */}
-                        <TableRow
-                          sx={{
-                            cursor: 'pointer',
-                            '& .MuiTableCell-root': {
-                              px: { xs: 0.5, sm: 1, md: 2 },
-                              py: { xs: 0.5, sm: 0.75 },
-                            }
-                          }}
-                          onClick={() => toggleSubGroup(subGroupKey)}
-                        >
-                          <TableCell>
-                            <Box sx={{ display: 'flex', alignItems: 'center', pl: 2 }}>
-                              <IconButton size="small">
-                                {expandedSubGroups[subGroupKey] ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
-                              </IconButton>
-                            </Box>
-                          </TableCell>
-                          <TableCell colSpan={7}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, pl: 2 }}>
-                              <Typography variant="body1" fontWeight={600}>
-                                {sizeValue} {unit}
-                              </Typography>
-                              <Chip 
-                                label={`${products.length} items`} 
-                                size="small" 
-                                variant="outlined"
-                              />
-                            </Box>
-                          </TableCell>
-                        </TableRow>
-
-                        {/* Products in this size subgroup */}
-                        {expandedSubGroups[subGroupKey] && products.map((product) => (
-                          <TableRow
+                      <ProductGroup
+                        key={subGroupKey}
+                        label={`${sizeValue} ${unit}`}
+                        itemCount={products.length}
+                        isExpanded={expandedSubGroups[subGroupKey]}
+                        onToggle={() => toggleSubGroup(subGroupKey)}
+                        variant="secondary"
+                        indentLevel={1}
+                      >
+                        {products.map((product) => (
+                          <ProductRow
                             key={`${product.item}-${product.productId}`}
-                            hover
-                            sx={{
-                              '&:nth-of-type(odd)': {
-                                backgroundColor: (theme) => alpha(theme.palette.action.hover, 0.25),
-                              },
-                              '&:hover': {
-                                backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.06),
-                              },
-                              '& .MuiTableCell-root': {
-                                borderColor: 'divider',
-                                px: { xs: 0.5, sm: 1, md: 2 },
-                                py: { xs: 0.5, sm: 1 },
-                              }
-                            }}
-                          >
-                            <TableCell></TableCell>
-                            <TableCell sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              <Box sx={{ pl: 4 }}>
-                                <Typography variant="body2" noWrap title={product.item}>
-                                  {product.item}
-                                </Typography>
-                              </Box>
-                            </TableCell>
-                            <TableCell align="center">
-                              <Chip
-                                label={product.price.trim()}
-                                color="success"
-                                size="small"
-                                variant="outlined"
-                                sx={{ 
-                                  height: 'auto', 
-                                  '& .MuiChip-label': { 
-                                    px: { xs: 0.5, sm: 1 },
-                                    py: 0.25,
-                                    fontSize: { xs: '0.7rem', sm: '0.8125rem' }
-                                  } 
-                                }}
-                              />
-                            </TableCell>
-                            <TableCell align="center">
-                              <Chip 
-                                label={product.uom} 
-                                size="small"
-                                sx={{ 
-                                  height: 'auto', 
-                                  '& .MuiChip-label': { 
-                                    px: { xs: 0.5, sm: 1 },
-                                    py: 0.25,
-                                    fontSize: { xs: '0.7rem', sm: '0.8125rem' }
-                                  } 
-                                }}
-                              />
-                            </TableCell>
-                            <TableCell align="center">
-                              {product.productSize || '-'}
-                            </TableCell>
-                            <TableCell align="center">
-                              {product.plu_upc || '-'}
-                            </TableCell>
-                            <TableCell align="center">
-                              {product.catId}
-                            </TableCell>
-                            <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
-                              <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 0.75 }}>
-                                <IconButton
-                                  size="small"
-                                  color="primary"
-                                  onClick={() => handleEdit(product)}
-                                  sx={{
-                                    border: 1,
-                                    borderColor: 'divider',
-                                    borderRadius: 2,
-                                  }}
-                                >
-                                  <EditIcon fontSize="small" />
-                                </IconButton>
-                                <IconButton
-                                  size="small"
-                                  color="error"
-                                  onClick={() => setDeleteConfirm(product)}
-                                  sx={{
-                                    border: 1,
-                                    borderColor: 'divider',
-                                    borderRadius: 2,
-                                  }}
-                                >
-                                  <DeleteIcon fontSize="small" />
-                                </IconButton>
-                              </Box>
-                            </TableCell>
-                          </TableRow>
+                            product={product}
+                            onEdit={handleEdit}
+                            onDelete={setDeleteConfirm}
+                            showGroupColumn={true}
+                            indentLevel={1}
+                          />
                         ))}
-                      </React.Fragment>
+                      </ProductGroup>
                     );
                   })}
-                </React.Fragment>
+                </ProductGroup>
               ))}
 
               {/* Standard rendering for non-productSize grouping */}
-              {groupBy !== 'productSize' && Object.entries(groupedProducts).map(([groupName, groupProducts]) => (
-                <React.Fragment key={groupName}>
-                  {groupBy !== 'none' && (
-                    <TableRow
-                      sx={{
-                        backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.08),
-                        cursor: 'pointer',
-                        '&:hover': {
-                          backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.12),
-                        },
-                        '& .MuiTableCell-root': {
-                          px: { xs: 0.5, sm: 1, md: 2 },
-                          py: { xs: 0.5, sm: 1 },
-                        }
-                      }}
-                      onClick={() => toggleGroup(groupName)}
-                    >
-                      <TableCell>
-                        <IconButton size="small">
-                          {expandedGroups[groupName] ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                        </IconButton>
-                      </TableCell>
-                      <TableCell colSpan={7}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Typography variant="subtitle1" fontWeight={700}>
-                            {groupName}
-                          </Typography>
-                          <Chip 
-                            label={`${groupProducts.length} items`} 
-                            size="small" 
-                            color="primary" 
-                            variant="outlined"
-                          />
-                        </Box>
-                      </TableCell>
-                    </TableRow>
-                  )}
-                  
-                  {(groupBy === 'none' || expandedGroups[groupName]) && groupProducts
-                    .slice(
-                      groupBy === 'none' ? page * rowsPerPage : 0,
-                      groupBy === 'none' ? page * rowsPerPage + rowsPerPage : groupProducts.length
-                    )
-                    .map((product) => (
-                      <TableRow
+              {groupBy !== 'productSize' && Object.entries(groupedProducts).map(([groupName, groupProducts]) => {
+                const paginatedProducts = groupProducts.slice(
+                  groupBy === 'none' ? page * rowsPerPage : 0,
+                  groupBy === 'none' ? page * rowsPerPage + rowsPerPage : groupProducts.length
+                );
+
+                // When no grouping, render products directly without group header
+                if (groupBy === 'none') {
+                  return paginatedProducts.map((product) => (
+                    <ProductRow
+                      key={`${product.item}-${product.productId}`}
+                      product={product}
+                      onEdit={handleEdit}
+                      onDelete={setDeleteConfirm}
+                      showGroupColumn={false}
+                    />
+                  ));
+                }
+
+                // With grouping, use ProductGroup component
+                return (
+                  <ProductGroup
+                    key={groupName}
+                    label={groupName}
+                    itemCount={groupProducts.length}
+                    isExpanded={expandedGroups[groupName]}
+                    onToggle={() => toggleGroup(groupName)}
+                    variant="primary"
+                  >
+                    {paginatedProducts.map((product) => (
+                      <ProductRow
                         key={`${product.item}-${product.productId}`}
-                        hover
-                        sx={{
-                          '&:nth-of-type(odd)': {
-                            backgroundColor: (theme) => alpha(theme.palette.action.hover, 0.25),
-                          },
-                          '&:hover': {
-                            backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.06),
-                          },
-                          '& .MuiTableCell-root': {
-                            borderColor: 'divider',
-                            px: { xs: 0.5, sm: 1, md: 2 },
-                            py: { xs: 0.5, sm: 1 },
-                          }
-                        }}
-                      >
-                        {groupBy !== 'none' && <TableCell></TableCell>}
-                        <TableCell sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          <Typography variant="body2" noWrap title={product.item}>
-                            {product.item}
-                          </Typography>
-                        </TableCell>
-                        <TableCell align="center">
-                          <Chip
-                            label={product.price.trim()}
-                            color="success"
-                            size="small"
-                            variant="outlined"
-                            sx={{ 
-                              height: 'auto', 
-                              '& .MuiChip-label': { 
-                                px: { xs: 0.5, sm: 1 },
-                                py: 0.25,
-                                fontSize: { xs: '0.7rem', sm: '0.8125rem' }
-                              } 
-                            }}
-                          />
-                        </TableCell>
-                        <TableCell align="center">
-                          <Chip 
-                            label={product.uom} 
-                            size="small"
-                            sx={{ 
-                              height: 'auto', 
-                              '& .MuiChip-label': { 
-                                px: { xs: 0.5, sm: 1 },
-                                py: 0.25,
-                                fontSize: { xs: '0.7rem', sm: '0.8125rem' }
-                              } 
-                            }}
-                          />
-                        </TableCell>
-                        <TableCell align="center">
-                          {product.productSize || '-'}
-                        </TableCell>
-                        <TableCell align="center">
-                          {product.plu_upc || '-'}
-                        </TableCell>
-                        <TableCell align="center">
-                          {product.catId}
-                        </TableCell>
-                        <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
-                          <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 0.75 }}>
-                            <IconButton
-                              size="small"
-                              color="primary"
-                              onClick={() => handleEdit(product)}
-                              sx={{
-                                border: 1,
-                                borderColor: 'divider',
-                                borderRadius: 2,
-                              }}
-                            >
-                              <EditIcon fontSize="small" />
-                            </IconButton>
-                            <IconButton
-                              size="small"
-                              color="error"
-                              onClick={() => setDeleteConfirm(product)}
-                              sx={{
-                                border: 1,
-                                borderColor: 'divider',
-                                borderRadius: 2,
-                              }}
-                            >
-                              <DeleteIcon fontSize="small" />
-                            </IconButton>
-                          </Box>
-                        </TableCell>
-                      </TableRow>
+                        product={product}
+                        onEdit={handleEdit}
+                        onDelete={setDeleteConfirm}
+                        showGroupColumn={true}
+                      />
                     ))}
-                </React.Fragment>
-              ))}
+                  </ProductGroup>
+                );
+              })}
             </TableBody>
           </Table>
         </TableContainer>
@@ -909,6 +603,27 @@ function ProductList() {
       />
 
         <DeleteDialog deleteConfirm={deleteConfirm} onClose={() => setDeleteConfirm(null)} />
+
+      {/* Scroll to top button */}
+      <Zoom in={showScrollTop}>
+        <Fab
+          color="primary"
+          size="medium"
+          onClick={scrollToTop}
+          aria-label="scroll to top"
+          sx={{
+            position: 'fixed',
+            bottom: 24,
+            right: 24,
+            boxShadow: 3,
+            '&:hover': {
+              boxShadow: 6,
+            }
+          }}
+        >
+          <KeyboardArrowUpIcon />
+        </Fab>
+      </Zoom>
     </Box>
   );
 }
