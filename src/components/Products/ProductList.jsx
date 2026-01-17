@@ -504,7 +504,6 @@ function ProductList() {
                           <Chip 
                             label={`${Object.keys(sizeGroups).length} sizes`} 
                             size="small" 
-                            backgroundColor="primary"
                             variant="outlined"
                           />
                         )}
